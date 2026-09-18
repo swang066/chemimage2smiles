@@ -1,4 +1,5 @@
 import io
+import subprocess
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -7,7 +8,7 @@ from PIL import Image, ImageDraw
 from chemimage import app as module
 from chemimage.chemistry import validate_smiles
 from chemimage.detection import detect_regions
-from chemimage.ocsr import Prediction
+from chemimage.ocsr import OsraBackend, Prediction
 from chemimage.ocsr import make_backend
 import pytest
 
@@ -74,3 +75,15 @@ def test_required_ocsr_fails_closed(monkeypatch):
     monkeypatch.setenv("MOLSCRIBE_CHECKPOINT", "missing.pth")
     with pytest.raises(RuntimeError, match="MolScribe failed to initialize"):
         make_backend()
+
+
+def test_osra_adapter_returns_recognized_smiles(monkeypatch):
+    monkeypatch.setattr("chemimage.ocsr.shutil.which", lambda name: "/usr/bin/osra")
+    monkeypatch.setattr(
+        "chemimage.ocsr.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "CCO\n", ""),
+    )
+    result = OsraBackend().predict(Image.new("RGB", (50, 50), "white"))
+    assert result.smiles == "CCO"
+    assert result.confidence is None
+
