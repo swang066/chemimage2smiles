@@ -44,4 +44,3 @@ Coordinates are pixel bounds in the uploaded image. Confidence is the model's va
 `examples/reaction_scheme.jpg` is the image attached in the referenced conversation. It is used for a detection smoke test, not as verified ground truth; the earlier chat SMILES were unverified manual readings. Run `python -m pytest -q` after installing dependencies. Tests cover multiple-region detection, RDKit normalization, and the upload/export flow with a deterministic fake OCSR adapter.
 
 PDF support can be added by rendering pages to images before `analyze_image`. The backend and per-page coordinate format are already separated from the upload handler.
-
