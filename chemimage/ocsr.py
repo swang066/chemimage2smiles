@@ -1,4 +1,7 @@
 import os
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -31,6 +34,33 @@ class UnavailableBackend:
         return Prediction(None, error=self.status)
 
 
+class OsraBackend:
+    name = "osra"
+    status = "ready"
+
+    def __init__(self):
+        if not shutil.which("osra"):
+            raise FileNotFoundError("OSRA executable not found")
+
+    def predict(self, crop: Image.Image) -> Prediction:
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "structure.png"
+                crop.convert("RGB").save(path)
+                result = subprocess.run(
+                    ["osra", "-f", "smi", str(path)],
+                    capture_output=True, text=True, timeout=45, check=False,
+                )
+            if result.returncode != 0:
+                return Prediction(None, error=f"OSRA exited {result.returncode}: {result.stderr.strip()[:200]}")
+            lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if not lines:
+                return Prediction(None, error="OSRA found no structure")
+            return Prediction(lines[0], None)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return Prediction(None, error=f"OSRA failed: {exc}")
+
+
 class MolScribeBackend:
     name = "molscribe"
     status = "ready"
@@ -59,6 +89,13 @@ class MolScribeBackend:
 
 def make_backend() -> Backend:
     choice = os.getenv("OCSR_BACKEND", "unavailable").lower()
+    if choice == "osra":
+        try:
+            return OsraBackend()
+        except Exception as exc:
+            if os.getenv("REQUIRE_OCSR") == "1":
+                raise RuntimeError(f"OSRA failed to initialize: {exc}") from exc
+            return UnavailableBackend(f"OSRA unavailable: {exc}")
     if choice != "molscribe":
         if os.getenv("REQUIRE_OCSR") == "1":
             raise RuntimeError("OCSR is required but OCSR_BACKEND is not molscribe")
@@ -69,3 +106,4 @@ def make_backend() -> Backend:
         if os.getenv("REQUIRE_OCSR") == "1":
             raise RuntimeError(f"MolScribe failed to initialize: {exc}") from exc
         return UnavailableBackend(f"MolScribe unavailable: {exc}")
+
